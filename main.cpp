@@ -6,7 +6,7 @@
 #include <tuple>
 #include <numeric>
 #include <functional>
-#include <cmath>
+//#include <cmath>
 #include <chrono>
 #include <algorithm>
 
@@ -33,6 +33,10 @@ public:
 		M = 1;
 	}
 
+	Matrix(int n, int m, double fill_value) : Matrix(n, m) {
+		data = vector<double>(N * M, fill_value);
+	}
+
 	// rvalue operator
 	Matrix(Matrix&& m) {
 		data = move(m.data);
@@ -48,7 +52,7 @@ public:
 		return M;
 	}
 
-	// get element
+	// get/set element
 	double& at(int i, int j) {
 		if (i < 0 || j < 0 || i >= N || j >= M)
 			throw out_of_range("Bad index");
@@ -56,9 +60,9 @@ public:
 	}
 
 	// initialize all elements with random on (-bound, bound)
-	Matrix rand_initialize(double bound) {
+	void rand_initialize(double bound) {
 		srand(clock());
-		return apply([&](double x)-> double {
+		*this = this->apply([&](double x)-> double {
 			return ((double)rand() / RAND_MAX) * 2 * bound - bound;
 		});
 	}
@@ -98,11 +102,11 @@ public:
 
 	// delete last row, N x M -> (N - 1) x M
 	Matrix pop_row() {
-		Matrix ans = *this;
-		if (ans.N < 2)
+		if (N < 2)
 			throw exception("N < 2");
+		Matrix ans = *this;
 		ans.N--;
-		ans.data.erase(ans.data.end() - ans.M);
+		ans.data.erase(ans.data.end() - M);
 		return ans;
 	}
 
@@ -122,9 +126,21 @@ public:
 		return ans;
 	}
 
+	Matrix operator-(){
+		Matrix ans = *this;
+		for (auto& elem : ans.data) {
+			elem = -elem;
+		}
+		return ans;
+	}
+
+	Matrix operator-(Matrix& r) {
+		return *this + (-r);
+	}
+
 	// fold all elems
 	double sum() {
-		return accumulate(data.begin(), data.end(), 0);
+		return accumulate(data.begin(), data.end(), 0.0);
 	}
 
 	// multiplication by elements
@@ -140,9 +156,9 @@ public:
 
 	// apply function to all elems
 	Matrix apply(function<double(double)> f) {
-		Matrix ans(N, M);
+		Matrix ans = *this;
 		for (int i = 0; i < N * M; ++i) {
-			ans.data[i] = f(data[i]);
+			ans.data[i] = f(ans.data[i]);
 		}
 		return ans;
 	}
@@ -150,13 +166,27 @@ public:
 	friend class NeuralNetwork;
 };
 
-double sigmoid(double x) {
-	return 1 / (1 + exp(x));
+namespace funcs {
+	double log(double x) {
+		return log2(x);
+	}
+
+	double sigmoid(double x) {
+		return 1 / (1 + exp(x)); 
+	}
+
+	function<double(double)> plus(double a) {
+		return [a](double x) {return x + a; };
+	}
+
+	double sqr(double x) {
+		return x * x;
+	}
 }
 
 class NeuralNetwork {
 private:
-	struct train_ex{
+	struct Sample{
 		vector<double> x;
 		int y;
 	}; 
@@ -164,9 +194,8 @@ private:
 	double lambda = 1;
 	vector<int> layers;
 	vector<Matrix> theta;
-	vector<train_ex> dataset;
+	vector<Sample> dataset;
 	
-
 public:
 	NeuralNetwork(initializer_list<int> list) : NeuralNetwork(vector<int>(list)) {
 	}
@@ -198,24 +227,21 @@ public:
 	double cost(){
 		if (dataset.empty())
 			return 0;
-		double ans = 0;
-		Matrix zero(vector<double>(layers.back(), 0));
+		double J = 0;
+		Matrix zero(layers.back(), 1, 0);
 		for (auto& sample : dataset) {
 			Matrix h = feedforward(sample.x);
 			Matrix y = zero;
 			y.at(sample.y, 0) = 1;
-			Matrix tmp1 = h.apply([](double x) { return log(x); });
-			tmp1 = y.mult(tmp1);
-			tmp1 = tmp1.apply([](double x) {return -x; });
-			Matrix tmp2 = h.apply([](double x) {return log(1 - x); });
-			tmp2 = y.apply([](double x) {return x - 1; }).mult(tmp2);
-			ans += (tmp1 + tmp2).sum();
+			// -y * log(h) - (1 - y) * log(1 - h)
+			J += (-y.mult(h.apply(funcs::log)) - ((-y).apply(funcs::plus(1)).mult((-h).apply(funcs::plus(1))))).sum();
 		}
 		for (auto& matrix : theta) {
-			ans += lambda / 2 * (matrix.apply([](double x) {return x * x; }).sum());
+			//regularized thetas, excluding bias coeffs
+			J += lambda / 2 * (matrix.trans().pop_row().apply(funcs::sqr)).sum();
 		}
-		ans /= dataset.size();
-		return ans;
+		J /= dataset.size();
+		return J;
 	}
 
 	void train() {
@@ -226,20 +252,22 @@ public:
 		if (x.size() != layers[0])
 			throw exception("Wrong features count");
 		Matrix column(x);
-		column.add_row({1.0});
+		column = column.add_row({1.0});
 		for (auto& matrix : theta) {
 			column = matrix * column;
-			column = column.apply(sigmoid);
-			column.add_row({1.0});
+			column = column.apply(funcs::sigmoid).add_row({1.0});
 		}
 		return column.pop_row();
 	}
 };
 
 void main() {
-	NeuralNetwork test {3, 5, 4};
-	
+	NeuralNetwork test {1, 2};
+	test.add_example(vector<double>(1, 1), 0);
+	double cost = test.cost();
 	ofstream out("out.txt");
+	Matrix m(1, 2);
+	//m.apply(sqrt);
 	//out << a;
 	/*ifstream in("data0", ios::binary);
 	ofstream out("out.txt");
