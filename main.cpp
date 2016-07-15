@@ -100,6 +100,14 @@ public:
 		return ans;
 	}
 
+	Matrix fill(double filler) {
+		Matrix ans(*this);
+		for (auto& elem : ans.data) {
+			elem = filler;
+		}
+		return ans;
+	}
+
 	// delete last row, N x M -> (N - 1) x M
 	Matrix pop_row() {
 		if (N < 2)
@@ -175,6 +183,10 @@ namespace funcs {
 		return 1 / (1 + exp(x)); 
 	}
 
+	double sigrad(double x) {
+		return sigmoid(x) * (1 - sigmoid(x));
+	}
+
 	function<double(double)> plus(double a) {
 		return [a](double x) {return x + a; };
 	}
@@ -195,6 +207,9 @@ private:
 	vector<int> layers;
 	vector<Matrix> theta;
 	vector<Sample> dataset;
+	vector<Matrix> delta_small;
+	vector<Matrix> activations;
+
 	
 public:
 	NeuralNetwork(initializer_list<int> list) : NeuralNetwork(vector<int>(list)) {
@@ -207,6 +222,8 @@ public:
 			if (l_size <= 0)
 				throw exception("Layer size should be > 0");
 			this->layers.push_back(l_size);
+			delta_small.push_back(Matrix(l_size, 1));
+			activations.push_back(Matrix(l_size, 1));
 		}
 		for (int i = 1; i < this->layers.size(); ++i) {
 			theta.push_back(Matrix(this->layers[i], this->layers[i - 1] + 1));
@@ -234,7 +251,8 @@ public:
 			Matrix y = zero;
 			y.at(sample.y, 0) = 1;
 			// -y * log(h) - (1 - y) * log(1 - h)
-			J += (-y.mult(h.apply(funcs::log)) - ((-y).apply(funcs::plus(1)).mult((-h).apply(funcs::plus(1))))).sum();
+			auto res = -y.mult(h.apply(funcs::log)) - (y.fill(1) - y).mult((h.fill(1) - h).apply(funcs::log));
+			J += res.sum();
 		}
 		for (auto& matrix : theta) {
 			//regularized thetas, excluding bias coeffs
@@ -245,7 +263,17 @@ public:
 	}
 
 	void train() {
-
+		Matrix zero(layers.back(), 1, 0);
+		for (auto& sample : dataset) {
+			feedforward(sample.x);
+			Matrix y = zero;
+			y.at(sample.y, 0) = 1;
+			delta_small.back() = activations.back() - y;
+			for (int i = delta_small.size() - 2; i > 1; ++i) {
+				delta_small[i] = (theta[i].trans() * delta_small[i + 1]).mult(activations[i].apply(funcs::sigrad)).pop_row();
+			}
+		}
+		
 	}
 
 	Matrix feedforward(vector<double> x) {
@@ -253,8 +281,10 @@ public:
 			throw exception("Wrong features count");
 		Matrix column(x);
 		column = column.add_row({1.0});
-		for (auto& matrix : theta) {
-			column = matrix * column;
+		activations[0] = column;
+		for (int i = 0; i < theta.size(); ++i) {
+			column = theta[i] * column;
+			activations[i + 1] = column;
 			column = column.apply(funcs::sigmoid).add_row({1.0});
 		}
 		return column.pop_row();
@@ -262,8 +292,8 @@ public:
 };
 
 void main() {
-	NeuralNetwork test {1, 2};
-	test.add_example(vector<double>(1, 1), 0);
+	NeuralNetwork test {5, 10, 6};
+	test.add_example(vector<double>({ 1.0, 2.0, 3.0, -5.0, 10.2 }), 1);
 	double cost = test.cost();
 	ofstream out("out.txt");
 	Matrix m(1, 2);
