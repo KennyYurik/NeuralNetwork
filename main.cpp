@@ -11,6 +11,7 @@
 #include <algorithm>
 
 using namespace std;
+ofstream out("out.txt");
 
 class Matrix {
 private:
@@ -171,6 +172,14 @@ public:
 		return ans;
 	}
 
+	Matrix operator*(double x) {
+		Matrix ans = *this;
+		for (auto& elem : ans.data) {
+			elem *= x;
+		}
+		return ans;
+	}
+
 	friend class NeuralNetwork;
 };
 
@@ -180,11 +189,11 @@ namespace funcs {
 	}
 
 	double sigmoid(double x) {
-		return 1 / (1 + exp(x)); 
+		return 1 / (1 + exp(-x)); 
 	}
 
-	double sigrad(double x) {
-		return sigmoid(x) * (1 - sigmoid(x));
+	double sigrad(double z) {
+		return z * (1 - z);
 	}
 
 	function<double(double)> plus(double a) {
@@ -204,11 +213,13 @@ private:
 	}; 
 
 	double lambda = 1;
+	double eps = 0.0001;
 	vector<int> layers;
 	vector<Matrix> theta;
 	vector<Sample> dataset;
 	vector<Matrix> delta_small;
 	vector<Matrix> activations;
+	vector<Matrix> delta_big;
 
 	
 public:
@@ -229,6 +240,7 @@ public:
 			theta.push_back(Matrix(this->layers[i], this->layers[i - 1] + 1));
 		}
 		for (auto& matrix : theta) {
+			delta_big.push_back(matrix);
 			matrix.rand_initialize(0.01);
 		}
 	}
@@ -263,25 +275,57 @@ public:
 	}
 
 	void train() {
-		Matrix zero(layers.back(), 1, 0);
-		for (auto& sample : dataset) {
-			feedforward(sample.x);
-			Matrix y = zero;
-			y.at(sample.y, 0) = 1;
-			delta_small.back() = activations.back() - y;
-			for (int i = delta_small.size() - 2; i > 1; ++i) {
-				delta_small[i] = (theta[i].trans() * delta_small[i + 1]).mult(activations[i].apply(funcs::sigrad)).pop_row();
+		if (dataset.empty()) {
+			throw exception("no data to train");
+		}
+		for (int iter = 0; iter < 50; ++iter) {
+			out << iter << ". " << cost() << endl;
+			for (auto& m : delta_big) {
+				m.fill(0);
+			}
+			Matrix zero(layers.back(), 1, 0);
+			for (auto& sample : dataset) {
+				feedforward(sample.x);
+				Matrix y = zero;
+				y.at(sample.y, 0) = 1;
+				delta_small.back() = activations.back() - y;
+				for (int i = delta_small.size() - 2; i > 0; --i) {
+					delta_small[i] = (theta[i].trans() * delta_small[i + 1]).mult(activations[i].add_row({ 1.0 }).apply(funcs::sigrad)).pop_row();
+				}
+				for (int i = 0; i < delta_big.size(); ++i) {
+					delta_big[i] = delta_big[i] + delta_small[i + 1] * activations[i].add_row({ 1.0 }).trans();
+				}
+			}
+			for (int i = 0; i < delta_big.size(); ++i) {
+				delta_big[i] = delta_big[i] * (1.0 / dataset.size()) + theta[i].pop_row().add_row(vector<double>(theta[i].M, 0)) * (lambda / dataset.size());
+			}
+			/*vector<Matrix> delta_test = theta;
+			for (int k = 0; k < theta.size(); ++k) {
+				Matrix m = theta[k];
+				m = m.fill(0);
+				for (int i = 0; i < m.N; ++i) {
+				for (int j = 0; j < m.M; ++j) {
+				theta[k].at(i, j) += eps;
+				double costplus = cost();
+				theta[k].at(i, j) -= 2 * eps;
+				double costminus = cost();
+				theta[k].at(i, j) += eps;
+				m.at(i, j) = (costplus - costminus) / (2 * eps);
+			}
+			}
+			}*/
+			for (int i = 0; i < theta.size(); ++i) {
+				theta[i] = theta[i] - delta_big[i];
 			}
 		}
-		
 	}
 
 	Matrix feedforward(vector<double> x) {
 		if (x.size() != layers[0])
 			throw exception("Wrong features count");
 		Matrix column(x);
-		column = column.add_row({1.0});
 		activations[0] = column;
+		column = column.add_row({1.0});
 		for (int i = 0; i < theta.size(); ++i) {
 			column = theta[i] * column;
 			activations[i + 1] = column;
@@ -292,10 +336,14 @@ public:
 };
 
 void main() {
-	NeuralNetwork test {5, 10, 6};
-	test.add_example(vector<double>({ 1.0, 2.0, 3.0, -5.0, 10.2 }), 1);
-	double cost = test.cost();
-	ofstream out("out.txt");
+	NeuralNetwork test {2, 4, 3};
+	test.add_example(vector<double>({ 1.0, 2.0 }), 1);
+	test.add_example(vector<double>({ -1.0, 12.0 }), 1);
+	test.add_example(vector<double>({ 0.0, 4.0 }), 1);
+	test.add_example(vector<double>({ 5.2, 0.5 }), 0);
+	test.add_example(vector<double>({ 8.0, 2.7 }), 0);
+
+	test.train();
 	Matrix m(1, 2);
 	//m.apply(sqrt);
 	//out << a;
