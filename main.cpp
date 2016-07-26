@@ -9,201 +9,12 @@
 //#include <cmath>
 #include <chrono>
 #include <algorithm>
+#include "matrix.h"
 
 using namespace std;
 ofstream out("out.txt");
 
-class Matrix {
-private:
-	vector<double> data;
-	int N, M;
 
-public:
-	
-	// default zero N x M matrix
-	Matrix(int n, int m) : N(n), M(m) {
-		if (N <= 0 || M <= 0) 
-			throw exception("Size should be positive.");
-		data = vector<double>(N * M, 0);
-	}
-
-	// N x 1 column matrix from data
-	Matrix(vector<double>& column) {
-		data = column;
-		N = column.size();
-		M = 1;
-	}
-
-	Matrix(int n, int m, double fill_value) : Matrix(n, m) {
-		data = vector<double>(N * M, fill_value);
-	}
-
-	// rvalue operator
-	Matrix(Matrix&& m) {
-		data = move(m.data);
-		N = m.N;
-		M = m.M;
-	}
-
-	int getN() {
-		return N;
-	}
-
-	int getM() {
-		return M;
-	}
-
-	// get/set element
-	double& at(int i, int j) {
-		if (i < 0 || j < 0 || i >= N || j >= M)
-			throw out_of_range("Bad index");
-		return data.at(j * N + i);
-	}
-
-	// initialize all elements with random on (-bound, bound)
-	void rand_initialize(double bound) {
-		srand(clock());
-		*this = this->apply([&](double x)-> double {
-			return ((double)rand() / RAND_MAX) * 2 * bound - bound;
-		});
-	}
-
-	// increase matrix size from N x M to (N + 1) x M filled with new data
-	Matrix add_row(vector<double> row) {
-		if (row.size() != M)
-			throw exception("Wrong size");
-		Matrix ans = *this;
-		ans.N++;
-		ans.data.insert(ans.data.end(), row.begin(), row.end());
-		return ans;
-	}
-
-	// add
-	Matrix operator+(Matrix& r) {
-		if (N != r.N || M != r.M) {
-			throw exception("Wrong size");
-		}
-		Matrix ans = Matrix(N, M);
-		for (int i = 0; i < N * M; ++i) {
-			ans.data[i] = data[i] + r.data[i];
-		}
-		return ans;
-	}
-
-	// transpose
-	Matrix trans() {
-		Matrix ans(M, N);
-		for (int i = 0; i < M; ++i) {
-			for (int j = 0; j < N; ++j) {
-				ans.at(i, j) = this->at(j, i);
-			}
-		}
-		return ans;
-	}
-
-	Matrix fill(double filler) {
-		Matrix ans(*this);
-		for (auto& elem : ans.data) {
-			elem = filler;
-		}
-		return ans;
-	}
-
-	// delete last row, N x M -> (N - 1) x M
-	Matrix pop_row() {
-		if (N < 2)
-			throw exception("N < 2");
-		Matrix ans = *this;
-		ans.N--;
-		ans.data.erase(ans.data.end() - M);
-		return ans;
-	}
-
-	// multiply
-	Matrix operator*(Matrix& r) {
-		if (M != r.N) {
-			throw exception("Wrong size");
-		}
-		Matrix ans(N, r.M);
-		for (int i = 0; i < N; ++i) {
-			for (int j = 0; j < r.M; ++j) {
-				for (int l = 0; l < M; ++l) {
-					ans.at(i, j) += this->at(i, l) * r.at(l, j);
-				}
-			}
-		}
-		return ans;
-	}
-
-	Matrix operator-(){
-		Matrix ans = *this;
-		for (auto& elem : ans.data) {
-			elem = -elem;
-		}
-		return ans;
-	}
-
-	Matrix operator-(Matrix& r) {
-		return *this + (-r);
-	}
-
-	// fold all elems
-	double sum() {
-		return accumulate(data.begin(), data.end(), 0.0);
-	}
-
-	// multiplication by elements
-	Matrix mult(Matrix& r) {
-		if (N != r.N || M != r.M)
-			throw exception("wrong size");
-		Matrix ans(*this);
-		for (int i = 0; i < data.size(); ++i) {
-			ans.data[i] *= r.data[i];
-		}
-		return ans;
-	}
-
-	// apply function to all elems
-	Matrix apply(function<double(double)> f) {
-		Matrix ans = *this;
-		for (int i = 0; i < N * M; ++i) {
-			ans.data[i] = f(ans.data[i]);
-		}
-		return ans;
-	}
-
-	Matrix operator*(double x) {
-		Matrix ans = *this;
-		for (auto& elem : ans.data) {
-			elem *= x;
-		}
-		return ans;
-	}
-
-	friend class NeuralNetwork;
-};
-
-namespace funcs {
-	double log(double x) {
-		return log2(x);
-	}
-
-	double sigmoid(double x) {
-		return 1 / (1 + exp(-x)); 
-	}
-
-	double sigrad(double z) {
-		return z * (1 - z);
-	}
-
-	function<double(double)> plus(double a) {
-		return [a](double x) {return x + a; };
-	}
-
-	double sqr(double x) {
-		return x * x;
-	}
-}
 
 class NeuralNetwork {
 private:
@@ -215,11 +26,11 @@ private:
 	double lambda = 1;
 	double eps = 0.0001;
 	vector<int> layers;
-	vector<Matrix> theta;
+	vector<matrix> theta;
 	vector<Sample> dataset;
-	vector<Matrix> delta_small;
-	vector<Matrix> activations;
-	vector<Matrix> delta_big;
+	vector<matrix> delta_small;
+	vector<matrix> activations;
+	vector<matrix> delta_big;
 
 	
 public:
@@ -233,11 +44,11 @@ public:
 			if (l_size <= 0)
 				throw exception("Layer size should be > 0");
 			this->layers.push_back(l_size);
-			delta_small.push_back(Matrix(l_size, 1));
-			activations.push_back(Matrix(l_size, 1));
+			delta_small.push_back(matrix(l_size, 1));
+			activations.push_back(matrix(l_size, 1));
 		}
 		for (int i = 1; i < this->layers.size(); ++i) {
-			theta.push_back(Matrix(this->layers[i], this->layers[i - 1] + 1));
+			theta.push_back(matrix(this->layers[i], this->layers[i - 1] + 1));
 		}
 		for (auto& matrix : theta) {
 			delta_big.push_back(matrix);
@@ -257,18 +68,17 @@ public:
 		if (dataset.empty())
 			return 0;
 		double J = 0;
-		Matrix zero(layers.back(), 1, 0);
+		matrix zero(layers.back(), 1, 0);
 		for (auto& sample : dataset) {
-			Matrix h = feedforward(sample.x);
-			Matrix y = zero;
+			matrix h = feedforward(sample.x);
+			matrix y = zero;
 			y.at(sample.y, 0) = 1;
-			// -y * log(h) - (1 - y) * log(1 - h)
-			auto res = -y.mult(h.apply(funcs::log)) - (y.fill(1) - y).mult((h.fill(1) - h).apply(funcs::log));
+			auto res = -y.mult_by_elem(log(h)) - (1 - y).mult_by_elem(log(1 - h));
 			J += res.sum();
 		}
 		for (auto& matrix : theta) {
 			//regularized thetas, excluding bias coeffs
-			J += lambda / 2 * (matrix.trans().pop_row().apply(funcs::sqr)).sum();
+			J += (lambda / 2) * sqr(matrix.trans().pop_row()).sum();
 		}
 		J /= dataset.size();
 		return J;
@@ -283,68 +93,69 @@ public:
 			for (auto& m : delta_big) {
 				m.fill(0);
 			}
-			Matrix zero(layers.back(), 1, 0);
+			matrix zero(layers.back(), 1, 0);
 			for (auto& sample : dataset) {
 				feedforward(sample.x);
-				Matrix y = zero;
+				matrix y = zero;
 				y.at(sample.y, 0) = 1;
 				delta_small.back() = activations.back() - y;
 				for (int i = delta_small.size() - 2; i > 0; --i) {
-					delta_small[i] = (theta[i].trans() * delta_small[i + 1]).mult(activations[i].add_row({ 1.0 }).apply(funcs::sigrad)).pop_row();
+					delta_small[i] = (sigrad((theta[i].trans() * delta_small[i + 1]).mult_by_elem(activations[i].add_row({ 1.0 })))).pop_row();
 				}
 				for (int i = 0; i < delta_big.size(); ++i) {
 					delta_big[i] = delta_big[i] + delta_small[i + 1] * activations[i].add_row({ 1.0 }).trans();
 				}
 			}
 			for (int i = 0; i < delta_big.size(); ++i) {
-				delta_big[i] = delta_big[i] * (1.0 / dataset.size()) + theta[i].pop_row().add_row(vector<double>(theta[i].M, 0)) * (lambda / dataset.size());
+				delta_big[i] = delta_big[i] * (1.0 / dataset.size()) + theta[i].pop_row().add_row(vector<double>(theta[i].getM(), 0)) * (lambda / dataset.size());
 			}
-			/*vector<Matrix> delta_test = theta;
+			vector<matrix> delta_test = theta;
 			for (int k = 0; k < theta.size(); ++k) {
-				Matrix m = theta[k];
+				matrix m = theta[k];
 				m = m.fill(0);
-				for (int i = 0; i < m.N; ++i) {
-				for (int j = 0; j < m.M; ++j) {
-				theta[k].at(i, j) += eps;
-				double costplus = cost();
-				theta[k].at(i, j) -= 2 * eps;
-				double costminus = cost();
-				theta[k].at(i, j) += eps;
-				m.at(i, j) = (costplus - costminus) / (2 * eps);
+				for (int i = 0; i < m.getN(); ++i) {
+					for (int j = 0; j < m.getM(); ++j) {
+						theta[k].at(i, j) += eps;
+						double costplus = cost();
+						theta[k].at(i, j) -= 2 * eps;
+						double costminus = cost();
+						theta[k].at(i, j) += eps;
+						m.at(i, j) = (costplus - costminus) / (2 * eps);
+					}
+				}
+				delta_test[k] = m;
 			}
-			}
-			}*/
 			for (int i = 0; i < theta.size(); ++i) {
-				theta[i] = theta[i] - delta_big[i];
+				theta[i] = theta[i] - delta_test[i] * 0.01;
 			}
 		}
 	}
 
-	Matrix feedforward(vector<double> x) {
+	matrix feedforward(vector<double> x) {
 		if (x.size() != layers[0])
 			throw exception("Wrong features count");
-		Matrix column(x);
+		matrix column(x);
 		activations[0] = column;
 		column = column.add_row({1.0});
 		for (int i = 0; i < theta.size(); ++i) {
 			column = theta[i] * column;
 			activations[i + 1] = column;
-			column = column.apply(funcs::sigmoid).add_row({1.0});
+			column = sigmoid(column).add_row({1.0});
 		}
 		return column.pop_row();
 	}
 };
 
 void main() {
-	NeuralNetwork test {2, 4, 3};
-	test.add_example(vector<double>({ 1.0, 2.0 }), 1);
+	NeuralNetwork test {2, 2};
+	test.add_example(vector<double>({ 1.0, 222.0 }), 1);
 	test.add_example(vector<double>({ -1.0, 12.0 }), 1);
 	test.add_example(vector<double>({ 0.0, 4.0 }), 1);
 	test.add_example(vector<double>({ 5.2, 0.5 }), 0);
-	test.add_example(vector<double>({ 8.0, 2.7 }), 0);
+	test.add_example(vector<double>({ 800.0, 2.7 }), 0);
 
 	test.train();
-	Matrix m(1, 2);
+	matrix m(1, 2);
 	//m.apply(sqrt);
 	//out << a;
 	/*ifstream in("data0", ios::binary);
