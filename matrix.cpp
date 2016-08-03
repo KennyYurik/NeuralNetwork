@@ -146,4 +146,18 @@ matrix operator+(double x, const matrix& r) { return r + x; }
 matrix operator-(const matrix& l, double x) { return l + (-x); }
 matrix operator-(double x, const matrix& r) { return -r + x; }
 
+matrix log(matrix& m) {
+	return m.apply([](double x) { return std::log(x); });
+}
 
+matrix sigmoid(matrix& m) {
+	return m.apply([](double x) { return 1 / (1 + exp(-x)); });
+}
+
+matrix sigrad(matrix& m) {
+	return m.apply([](double z) { return z * (1 - z); });
+}
+
+matrix sqr(matrix& m) {
+	return m.apply([](double x) {return x * x; });
+}

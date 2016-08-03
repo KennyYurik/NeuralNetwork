@@ -87,18 +87,7 @@ public:
 
 
 
-matrix log(matrix& m) {
-	return m.apply([](double x) { return std::log(x); });
-}
-
-matrix sigmoid(matrix& m) {
-	return m.apply([](double x) { return 1 / (1 + exp(-x)); });
-}
-
-matrix sigrad(matrix& m) {
-	return m.apply([](double z) { return z * (1 - z); });
-}
-
-matrix sqr(matrix& m) {
-	return m.apply([](double x) {return x * x; });
-}
+matrix log(matrix& m);
+matrix sigmoid(matrix& m);
+matrix sigrad(matrix& m);
+matrix sqr(matrix& m);
