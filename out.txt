@@ -1,0 +1,3 @@
+samples size: 8000
+check size: 2000
+correctness: 8.6%
